@@ -10,18 +10,19 @@ import Control.Applicative hiding ((<|>), many, optional, empty)
 
 data Program = Program [Stmt] deriving (Show)
 
-data Stmt =  Stmt AluStmt
+data Stmt =  Alu AluStmt | Ld LdStmt
              deriving (Show)
 
 data AluStmt = AluReg AluOp Register 
              | AluImm AluOp Integer
-             | AluMem MemRegister 
+             | AluMem AluOp MemRegister 
                deriving (Show)
 
 data LdStmt = LdRegReg Register Register 
             | LdRegIm  Register Integer
             | LdRegMem Register MemRegister
             | LdMemReg MemRegister Register
+              deriving (Show)
 
 data Register = A | B | C | D | E | H | L  deriving (Show)
 
@@ -41,7 +42,6 @@ data AluOp = Add
            | Cmp 
              deriving (Show)
 
---data AluStmt = AluStmt AluOp Register deriving (Show)         
 
 
 languageDef =
@@ -67,6 +67,7 @@ parens = Token.parens lexer
 integer = Token.integer lexer
 semiColon = Token.semi lexer 
 whiteSpace = Token.whiteSpace lexer            
+comma = Token.comma lexer
 
 run :: Show a => Parser a -> String -> IO ()
 run p input
@@ -89,18 +90,22 @@ statements =     try ((:) <$> statement <*> statements)
 
 
 statement :: Parser Stmt
-statement = Stmt <$> alu8Stmt
+statement =  (Alu <$> (try alu8Stmt))
+             <|> (Ld <$> (try ldStmt))
 
+
+--Parse ALU instructions  
 alu8Stmt :: Parser AluStmt
 alu8Stmt = try parserAluOp >>= alu8Stmt'
 
 alu8Stmt' :: AluOp -> Parser AluStmt
 alu8Stmt' op = 
-        (try ((AluReg op) <$> parser8Reg))
+           (try ((AluReg op) <$> parser8Reg))
        <|> (try ((AluImm op) <$> parserSigned8Int))
+       <|> (try ((AluMem op) <$> parseMemReg))
        <?> "register or 8 bit signed integer"  
        
-        
+
 parserAluOp :: Parser AluOp
 parserAluOp =   try (reserved "add" >> return Add)
             <|> try (reserved "adc" >> return Adc)
@@ -113,6 +118,19 @@ parserAluOp =   try (reserved "add" >> return Add)
             <|> try (reserved "or"  >> return Or)
             <|> try (reserved "xor" >> return Xor)
 
+
+-- Parse LD X,X instructions       
+ldStmt :: Parser LdStmt 
+ldStmt = try $ reserved "ld" *> ldStmt'
+
+ldStmt' :: Parser LdStmt
+ldStmt' =
+            (try (LdRegReg <$> parser8Reg  <* comma <*> parser8Reg))
+        <|> (try (LdRegIm  <$> parser8Reg  <* comma <*> parserUnsigned8Int))
+        <|> (try (LdMemReg <$> parseMemReg <* comma <*> parser8Reg))
+        <|> (try (LdRegMem <$> parser8Reg  <* comma <*> parseMemReg))
+
+
 parser8Reg :: Parser Register
 parser8Reg = (reserved "a" >> return A) 
          <|> (reserved "b" >> return B)
@@ -121,18 +139,33 @@ parser8Reg = (reserved "a" >> return A)
          <|> (reserved "e" >> return E)     
          <|> (reserved "h" >> return H)
          <|> (reserved "l" >> return L)
-         <|> (reserved "(hl)" >> return MemHL)
 
 
---parseMemReg :: Parser MemRegister
---parseMemReg 
+parseMemReg :: Parser MemRegister
+parseMemReg =   parens $ 
+                try (reserved "af" >> return MemAF)
+            <|> try (reserved "bc" >> return MemBC)
+            <|> try (reserved "de" >> return MemDE)
+            <|> try (reserved "hl+" >> return MemHLPlus)
+            <|> try (reserved "hl-" >> return MemHLMinus)
+            <|> try (reserved "hl" >> return MemHL)
+            
 
 parserInteger :: Parser Integer
 parserInteger = whiteSpace *> Token.lexeme lexer integer
 
+--Parser 8 bit signed integer -128 - 127
 parserSigned8Int :: Parser Integer
 parserSigned8Int = parserInteger >>= \num ->
                    if (num >= -128 && num <= 127)
                    then return num 
                    else mzero
+
+-- Parse 8 bit unsigned integer 0 - 255
+parserUnsigned8Int :: Parser Integer
+parserUnsigned8Int = parserInteger >>= \num ->
+                     if (num <= 255 && num >= 0)
+                     then return num
+                     else mzero
+
 
