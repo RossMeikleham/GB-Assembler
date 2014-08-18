@@ -10,12 +10,18 @@ import Control.Applicative hiding ((<|>), many, optional, empty)
 
 data Program = Program [Stmt] deriving (Show)
 
-data Stmt =  Alu AluStmt | Ld LdStmt | Jmp JmpStmt
+data Stmt =  Alu8 Alu8Stmt | Alu16 Alu16Stmt |  Ld LdStmt | Jmp JmpStmt
              deriving (Show)
 
-data AluStmt = AluReg AluOp Register 
-             | AluImm AluOp Integer
-             | AluMem AluOp MemRegister 
+data Alu8Stmt = AluReg Alu8Op Register 
+              | AluImm Alu8Op Integer
+              | AluMemHl Alu8Op 
+               deriving (Show)
+
+data Alu16Stmt = Inc16 CombinedRegister
+               | Dec16 CombinedRegister
+               | AddSpIm Integer
+               | AddHL CombinedRegister
                deriving (Show)
 
 data LdStmt = LdRegReg Register Register 
@@ -49,18 +55,7 @@ data CombinedRegister = AF | BC | DE | HL | SP  deriving (Show)
 
 data MemRegister = MemAF | MemBC | MemDE | MemHL deriving (Show)
 
-data AluOp = Add 
-           | Adc 
-           | Sub 
-           | Sbc 
-           | Mul 
-           | Div
-           | And 
-           | Or 
-           | Xor 
-           | Cmp 
-             deriving (Show)
-
+data Alu8Op = Add | Adc | Sub | Sbc | And | Or | Xor | Cmp | Inc | Dec deriving (Show)
 
 
 languageDef =
@@ -87,6 +82,10 @@ integer = Token.integer lexer
 semiColon = Token.semi lexer 
 whiteSpace = Token.whiteSpace lexer            
 comma = Token.comma lexer
+a = reserved "a"
+c = reserved "c"
+hl = reserved "hl"
+sp = reserved "sp"
 
 run :: Show a => Parser a -> String -> IO ()
 run p input
@@ -109,35 +108,43 @@ statements =     try ((:) <$> statement <*> statements)
 
 
 statement :: Parser Stmt
-statement =      (Alu <$> try alu8Stmt)
+statement =      (Alu8 <$> try alu8Stmt)
+             <|> (Alu16 <$> try alu16Stmt)
              <|> (Ld  <$> try ldStmt)
              <|> (Jmp <$> try jmpStmt)
 
 
---Parse ALU instructions  
-alu8Stmt :: Parser AluStmt
-alu8Stmt = try parserAluOp >>= alu8Stmt'
+--Parse 8 bit ALU instructions  
+alu8Stmt :: Parser Alu8Stmt
+alu8Stmt =    try (parserAluOp >>= alu8Stmt')
 
-alu8Stmt' :: AluOp -> Parser AluStmt
+alu8Stmt' :: Alu8Op -> Parser Alu8Stmt
 alu8Stmt' op = 
            try (AluReg op <$> parser8Reg)
        <|> try (AluImm op <$> parserSigned8Int)
-       <|> try (AluMem op <$> parseMemReg)
+       <|> try (parens hl >> return (AluMemHl op))
+
        <?> "register or 8 bit signed integer"  
        
 
-parserAluOp :: Parser AluOp
-parserAluOp =   try (reserved "add" >> return Add)
-            <|> try (reserved "adc" >> return Adc)
+parserAluOp :: Parser Alu8Op
+parserAluOp =   try (reserved "add" >> a >> return Add)
+            <|> try (reserved "adc" >> a >> return Adc)
             <|> try (reserved "sub" >> return Sub)
-            <|> try (reserved "sbc" >> return Sbc)
-            <|> try (reserved "cmp" >> return Cmp)
-            <|> try (reserved "mul" >> return Mul)
-            <|> try (reserved "div" >> return Div)
+            <|> try (reserved "sbc" >> a >> return Sbc)
+            <|> try (reserved "cp"  >> return Cmp)
             <|> try (reserved "and" >> return And)
             <|> try (reserved "or"  >> return Or)
             <|> try (reserved "xor" >> return Xor)
+            <|> try (reserved "inc" >> return Inc)
+            <|> try (reserved "dec" >> return Dec)
 
+-- Parse 16 bit ALU instructions
+alu16Stmt :: Parser Alu16Stmt
+alu16Stmt =     try (Inc16 <$> (reserved "inc" *> parseCombinedReg))
+            <|> try (Dec16 <$> (reserved "dec" *> parseCombinedReg)) 
+            <|> try (AddSpIm <$> (reserved "add" *> sp *> comma *> parserSigned8Int))
+            <|> try (AddHL <$> (reserved "add" *> hl *> comma *> parseCombinedReg))
 
 -- Parse LD X,X instructions       
 ldStmt :: Parser LdStmt 
@@ -154,24 +161,24 @@ ldStmt' =
         <|> try (LdCombinedRegIm <$> parseCombinedReg <* comma <*> parserUnsigned16Int)
         <|> try (LdMemSP <$> parens parserUnsigned16Int <* comma <* reserved "sp")
 
-        <|> try (reserved "a" >> comma >> parens (reserved "c") >> return LDIOAC) 
-        <|> try (parens (reserved "c") >> comma >> reserved "a" >> return LDIOCA)
+        <|> try (a >> comma >> parens c >> return LDIOAC) 
+        <|> try (parens c >> comma >> a >> return LDIOCA)
 
 ldiStmt :: Parser LdStmt
 ldiStmt = 
-          try (reserved "a" >> comma >> parens (reserved "hl") >> return LdiAmemHL) 
-      <|> try (parens (reserved "hl") >> comma >> reserved "a" >> return LdimemHLA)
+          try (a >> comma >> parens hl >> return LdiAmemHL) 
+      <|> try (parens hl >> comma >> a >> return LdimemHLA)
 
 lddStmt :: Parser LdStmt
 lddStmt =
-          try (reserved "a" >> comma >> parens (reserved "hl") >> return LddAmemHL) 
-      <|> try (parens (reserved "hl") >> comma >> reserved "a" >> return LddmemHLA)
+          try (a >> comma >> parens hl >> return LddAmemHL) 
+      <|> try (parens hl >> comma >> a >> return LddmemHLA)
         
 
 ldhStmt :: Parser LdStmt
 ldhStmt = 
-           try (LdhAIO <$> (reserved "a" *> comma *> parens parserSigned8Int))
-      <|>  try (LdhIOA <$> parens parserSigned8Int <* comma <* reserved "a")
+           try (LdhAIO <$> (a *> comma *> parens parserSigned8Int))
+      <|>  try (LdhIOA <$> parens parserSigned8Int <* comma <* a)
 
 -- Parser JP and JR instructions
 jmpStmt :: Parser JmpStmt
@@ -182,7 +189,7 @@ jpStmt :: Parser JmpStmt
 jpStmt =    try (JmpCond <$> parserCondition <* comma <*> parserUnsigned16Int) 
         <|> try (JmpIm <$> parserUnsigned16Int)
 
-        <|> try (parens (reserved "hl") >> return JmpHL)
+        <|> try (parens hl >> return JmpHL)
 
 
 jrStmt :: Parser JmpStmt
