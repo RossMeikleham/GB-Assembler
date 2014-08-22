@@ -10,8 +10,13 @@ import Control.Applicative hiding ((<|>), many, optional, empty)
 
 data Program = Program [Stmt] deriving (Show)
 
-data Stmt =  Alu8 Alu8Stmt | Alu16 Alu16Stmt |  Ld8 Ld8Stmt | Ld16 Ld16Stmt | Jmp JmpStmt
-             deriving (Show)
+data Stmt = Alu8 Alu8Stmt 
+          | Alu16 Alu16Stmt 
+          | Ld8 Ld8Stmt 
+          | Ld16 Ld16Stmt 
+          | Jmp JmpStmt
+          | Miscellaneous MiscellaneousStmt
+            deriving (Show)
 
 data Alu8Stmt = AluReg Alu8Op Register 
               | AluImm Alu8Op Integer
@@ -55,6 +60,40 @@ data JmpStmt = JmpIm Integer -- Jump to 16 bit immediate address
              | JmpRel Integer -- Jump to 8 bit address relative to PC
              | JmpRelCond Condition Integer -- Relative Jump if Condition is met
                deriving (Show) 
+
+data MiscellaneousStmt = 
+    SwapReg Register
+  | SwapMemHL 
+  | DAA
+  | CPL
+  | CCF
+  | SCF
+  | NOP
+  | HALT
+  | STOP
+  | DI
+  | EI
+    deriving (Show)
+
+data RotateStmt = RLCA
+                | RLA
+                | RRCA
+                | RRA
+                | RLCReg Register
+                | RLCMemHL 
+                | RLReg Register
+                | RLMemHL 
+                | RRCReg Register
+                | RRCMemHL
+                | RRReg Register
+                | RRMemHL 
+                | SLAReg Register
+                | SLAMemHL
+                | SRAReg Register
+                | SRAMemHL 
+                | SRLReg Register
+                | SRLMemHL
+
 
 data Condition = NotZero | Zero | NoCarry | Carry deriving (Show)
 
@@ -122,6 +161,7 @@ statement =      (Alu8 <$> try alu8Stmt)
              <|> (Ld8  <$> try ld8Stmt)
              <|> (Ld16 <$> try ld16Stmt)
              <|> (Jmp <$> try jmpStmt)
+             <|> (Miscellaneous <$> try miscellaneousStmt)
 
 
 --Parse 8 bit ALU instructions  
@@ -220,6 +260,24 @@ jrStmt :: Parser JmpStmt
 jrStmt =   try (JmpRelCond <$> parserCondition <* comma <*> parserSigned8Int)
        <|> try (JmpRel     <$> parserSigned8Int)
 
+--Miscellaneous Instructions
+miscellaneousStmt :: Parser MiscellaneousStmt
+miscellaneousStmt =    try (reserved "nop"  >> return NOP)
+                   <|> try (reserved "di"   >> return DI)
+                   <|> try (reserved "ei"   >> return EI)
+                   <|> try (reserved "swap" >> swap)
+                   <|> try (reserved "daa"  >> return DAA)
+                   <|> try (reserved "cpl"  >> return CPL)
+                   <|> try (reserved "ccf"  >> return CCF)
+                   <|> try (reserved "scf"  >> return SCF)
+                   <|> try (reserved "halt" >> return HALT)
+                   <|> try (reserved "stop" >> return STOP)
+                   
+                    
+
+swap :: Parser MiscellaneousStmt
+swap = try (SwapReg <$> parser8Reg)
+     <|> try (parens hl >> return SwapMemHL)
        
 parserCondition :: Parser Condition
 parserCondition = try (reserved "nz" >> return NotZero)
