@@ -10,7 +10,7 @@ import Control.Applicative hiding ((<|>), many, optional, empty)
 
 data Program = Program [Stmt] deriving (Show)
 
-data Stmt =  Alu8 Alu8Stmt | Alu16 Alu16Stmt |  Ld LdStmt | Jmp JmpStmt
+data Stmt =  Alu8 Alu8Stmt | Alu16 Alu16Stmt |  Ld8 Ld8Stmt | Ld16 Ld16Stmt | Jmp JmpStmt
              deriving (Show)
 
 data Alu8Stmt = AluReg Alu8Op Register 
@@ -24,12 +24,13 @@ data Alu16Stmt = Inc16 CombinedRegister
                | AddHL CombinedRegister
                deriving (Show)
 
-data LdStmt = LdRegReg Register Register 
-            | LdRegIm  Register Integer
-            | LdRegMem Register MemRegister
-            | LdMemReg MemRegister Register
-            | LdMemSP Integer
-            | LdCombinedRegIm CombinedRegister Integer
+data Ld8Stmt = LdRegReg Register Register -- Load register contents into register
+            | LdRegIm  Register Integer -- Load immediate 8 bit unsigned val into Reg
+            | LdRegMemHl Register  -- Load value at address HL into register
+            | LdMemHlReg Register  -- Load register into memory at address HL
+            | LdAMemCombinedReg CombinedRegister --Load value at address Combined reg into A
+            | LdMemCombinedRegA CombinedRegister --Load contents of register A into mem address of reg
+            | LdAMemIm Integer --Load value at immediate 16 bit address into register A
             | LdiAmemHL
             | LdimemHLA
             | LddAmemHL
@@ -39,6 +40,14 @@ data LdStmt = LdRegReg Register Register
             | LdhIOA Integer
             | LdhAIO Integer 
               deriving (Show)
+
+data Ld16Stmt = LdCombinedRegIm CombinedRegister Integer
+              |  LdMemSp Integer -- Load SP contents into given 16 bit address 
+              |  LdSpHl -- Load contents of HL into SP
+              |  LdHLSpPlusIm Integer -- Load contents of memory 
+              |  Push StackRegister -- Push contents of combined reg onto stack
+              |  Pop StackRegister -- Pop contents of combined reg from stack
+                 deriving (Show)
 
 data JmpStmt = JmpIm Integer -- Jump to 16 bit immediate address
              | JmpCond Condition Integer -- Jump if Condition is met
@@ -51,9 +60,9 @@ data Condition = NotZero | Zero | NoCarry | Carry deriving (Show)
 
 data Register = A | B | C | D | E | H | L  deriving (Show)
 
-data CombinedRegister = AF | BC | DE | HL | SP  deriving (Show) 
+data CombinedRegister = BC | DE | HL | SP  deriving (Show) 
 
-data MemRegister = MemAF | MemBC | MemDE | MemHL deriving (Show)
+data StackRegister = StackRegAF | StackRegBC | StackRegDE | StackRegHL deriving (Show)
 
 data Alu8Op = Add | Adc | Sub | Sbc | And | Or | Xor | Cmp | Inc | Dec deriving (Show)
 
@@ -110,7 +119,8 @@ statements =     try ((:) <$> statement <*> statements)
 statement :: Parser Stmt
 statement =      (Alu8 <$> try alu8Stmt)
              <|> (Alu16 <$> try alu16Stmt)
-             <|> (Ld  <$> try ldStmt)
+             <|> (Ld8  <$> try ld8Stmt)
+             <|> (Ld16 <$> try ld16Stmt)
              <|> (Jmp <$> try jmpStmt)
 
 
@@ -146,39 +156,53 @@ alu16Stmt =     try (Inc16 <$> (reserved "inc" *> parseCombinedReg))
             <|> try (AddSpIm <$> (reserved "add" *> sp *> comma *> parserSigned8Int))
             <|> try (AddHL <$> (reserved "add" *> hl *> comma *> parseCombinedReg))
 
--- Parse LD X,X instructions       
-ldStmt :: Parser LdStmt 
-ldStmt =     try (reserved "ld" *> ldStmt')
+-- Parse 8 bit LD, LDI and LDH instructions       
+ld8Stmt :: Parser Ld8Stmt 
+ld8Stmt =    try (reserved "ld"  *> ldStmt')
          <|> try (reserved "ldi" *> ldiStmt)
          <|> try (reserved "ldd" *> lddStmt)
          <|> try (reserved "ldh" *> ldhStmt)
-ldStmt' :: Parser LdStmt
+
+ldStmt' :: Parser Ld8Stmt
 ldStmt' =
             try (LdRegReg <$> parser8Reg  <* comma <*> parser8Reg)
         <|> try (LdRegIm  <$> parser8Reg  <* comma <*> parserUnsigned8Int)
-        <|> try (LdMemReg <$> parseMemReg <* comma <*> parser8Reg)
-        <|> try (LdRegMem <$> parser8Reg  <* comma <*> parseMemReg)
-        <|> try (LdCombinedRegIm <$> parseCombinedReg <* comma <*> parserUnsigned16Int)
-        <|> try (LdMemSP <$> parens parserUnsigned16Int <* comma <* reserved "sp")
+        <|> try (LdRegMemHl <$> parser8Reg <* comma <* parens hl)
+        <|> try (LdAMemCombinedReg <$> (a *> comma *> parens parseCombinedReg))
+        <|> try (LdMemCombinedRegA <$> parens parseCombinedReg <* comma <* a)
+        <|> try (LdAMemIm <$> (a *> comma *> parens parserUnsigned16Int))
 
         <|> try (a >> comma >> parens c >> return LDIOAC) 
         <|> try (parens c >> comma >> a >> return LDIOCA)
 
-ldiStmt :: Parser LdStmt
+ldiStmt :: Parser Ld8Stmt
 ldiStmt = 
           try (a >> comma >> parens hl >> return LdiAmemHL) 
       <|> try (parens hl >> comma >> a >> return LdimemHLA)
 
-lddStmt :: Parser LdStmt
+lddStmt :: Parser Ld8Stmt
 lddStmt =
           try (a >> comma >> parens hl >> return LddAmemHL) 
       <|> try (parens hl >> comma >> a >> return LddmemHLA)
         
 
-ldhStmt :: Parser LdStmt
+ldhStmt :: Parser Ld8Stmt
 ldhStmt = 
            try (LdhAIO <$> (a *> comma *> parens parserSigned8Int))
       <|>  try (LdhIOA <$> parens parserSigned8Int <* comma <* a)
+
+
+-- Parse 16 bit LD instructions
+ld16Stmt :: Parser Ld16Stmt
+ld16Stmt = try (reserved "ld" *> ld16Stmt')
+
+ld16Stmt' :: Parser Ld16Stmt
+ld16Stmt' =    try (LdCombinedRegIm <$> (parseCombinedReg <* comma) <*> parserUnsigned16Int)
+           <|> try (LdMemSp <$> parserUnsigned16Int <* comma <* sp)
+           <|> try (sp >> comma >> hl >> return LdSpHl)
+           <|> try (LdHLSpPlusIm <$> (hl >> comma >> parens (sp >> (reserved "+") >> parserSigned8Int)))
+           <|> try (Push <$> parseStackReg)
+           <|> try (Pop  <$> parseStackReg)
 
 -- Parser JP and JR instructions
 jmpStmt :: Parser JmpStmt
@@ -215,19 +239,19 @@ parser8Reg = (reserved "a" >> return A)
 
 
 parseCombinedReg :: Parser CombinedRegister
-parseCombinedReg = (reserved "af" >> return AF)
-               <|> (reserved "bc" >> return BC)
+parseCombinedReg = (reserved "bc" >> return BC)
                <|> (reserved "de" >> return DE)
                <|> (reserved "hl" >> return HL)
                <|> (reserved "sp" >> return SP)
 
-parseMemReg :: Parser MemRegister
-parseMemReg =   parens $ 
-                try (reserved "af" >> return MemAF)
-            <|> try (reserved "bc" >> return MemBC)
-            <|> try (reserved "de" >> return MemDE)
-            <|> try (reserved "hl" >> return MemHL)
-            
+parseStackReg :: Parser StackRegister
+parseStackReg =    (reserved "af" >> return StackRegAF)
+               <|> (reserved "bc" >> return StackRegBC)
+               <|> (reserved "de" >> return StackRegDE)
+               <|> (reserved "hl" >> return StackRegHL)
+          
+
+
 
 parserInteger :: Parser Integer
 parserInteger = whiteSpace *> Token.lexeme lexer integer
