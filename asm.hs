@@ -178,10 +178,10 @@ alu8Stmt' op =
        
 
 parserAluOp :: Parser Alu8Op
-parserAluOp =   try (reserved "add" >> a >> return Add)
-            <|> try (reserved "adc" >> a >> return Adc)
+parserAluOp =   try (reserved "add" >> a >> comma >> return Add)
+            <|> try (reserved "adc" >> a >> comma >> return Adc)
             <|> try (reserved "sub" >> return Sub)
-            <|> try (reserved "sbc" >> a >> return Sbc)
+            <|> try (reserved "sbc" >> a >> comma >> return Sbc)
             <|> try (reserved "cp"  >> return Cmp)
             <|> try (reserved "and" >> return And)
             <|> try (reserved "or"  >> return Or)
