@@ -67,6 +67,7 @@ genStmt :: Stmt -> B.ByteString
 genStmt (Alu8 a) = genAlu8 a
 genStmt (Alu16 a) = genAlu16 a
 genStmt (Ld8 a) = genLd8 a 
+genStmt (Ld16 a) = genLd16 a
 
 genAlu8 :: Alu8Stmt -> B.ByteString
 genAlu8 (AluReg op reg) = B.singleton $ M.findWithDefault 0xD3 (op, reg) aluRegTable
@@ -95,7 +96,7 @@ genAlu16 (AddHL reg) = B.singleton $ case reg of
 genLd8 :: Ld8Stmt -> B.ByteString
 genLd8 (LdRegReg reg1 reg2) = B.singleton $ 0x40 + 
     (M.findWithDefault 0x0 reg1 reg1MapLd) + (M.findWithDefault 0x0 reg2 regOffsetMap)
-genLd8 (LdRegIm reg word) = B.pack [0x1, word] 
+genLd8 (LdRegIm reg word) = B.pack [ins, word] 
  where ins = case reg of 
         B -> 0x06
         C -> 0x0E
@@ -138,5 +139,29 @@ genLd8 LDIOAC = B.singleton 0xF2
 genLd8 LDIOCA = B.singleton 0xE2
 genLd8 (LdhIOA w8) = B.pack [0xE0, w8]
 genLd8 (LdhAIO w8) = B.pack [0xF0, w8]
+
+
+genLd16 :: Ld16Stmt -> B.ByteString
+genLd16 (LdCombinedRegIm reg16 w16) = B.pack $ [ins] ++ (splitW16 w16) 
+ where ins = case reg16 of
+        BC -> 0x01
+        DE -> 0x11
+        HL -> 0x21
+        SP -> 0x31
+genLd16 (LdMemSp w16) = B.singleton 0x08
+genLd16 LdSpHl = B.singleton 0xF9
+genLd16 (LdHLSpPlusIm w16) = B.singleton 0xF8
+genLd16 (Push stackReg) = B.singleton $ case stackReg of
+    StackRegBC -> 0xC5
+    StackRegDE -> 0xD5
+    StackRegHL -> 0xE5 
+    StackRegAF -> 0xF5
+genLd16 (Pop stackReg) = B.singleton $ case stackReg of
+    StackRegBC -> 0xC1
+    StackRegDE -> 0xD1
+    StackRegHL -> 0xE1
+    StackRegAF -> 0xF1
+
+
 
 

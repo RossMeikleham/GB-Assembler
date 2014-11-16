@@ -60,7 +60,7 @@ data Ld8Stmt = LdRegReg Register Register -- Load register contents into registe
 data Ld16Stmt = LdCombinedRegIm CombinedRegister Word16
               |  LdMemSp Word16 -- Load SP contents into given 16 bit address 
               |  LdSpHl -- Load contents of HL into SP
-              |  LdHLSpPlusIm Word16 -- Load contents of memory 
+              |  LdHLSpPlusIm Word8 -- Load contents of memory 
               |  Push StackRegister -- Push contents of combined reg onto stack
               |  Pop StackRegister -- Pop contents of combined reg from stack
                  deriving (Show, Eq, Ord)
