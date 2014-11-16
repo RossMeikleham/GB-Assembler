@@ -68,6 +68,7 @@ genStmt (Alu8 a) = genAlu8 a
 genStmt (Alu16 a) = genAlu16 a
 genStmt (Ld8 a) = genLd8 a 
 genStmt (Ld16 a) = genLd16 a
+genStmt (Jmp a) = genJmp a
 
 genAlu8 :: Alu8Stmt -> B.ByteString
 genAlu8 (AluReg op reg) = B.singleton $ M.findWithDefault 0xD3 (op, reg) aluRegTable
@@ -163,5 +164,21 @@ genLd16 (Pop stackReg) = B.singleton $ case stackReg of
     StackRegAF -> 0xF1
 
 
+genJmp :: JmpStmt -> B.ByteString
+genJmp (JmpIm w16) = B.pack $ [0xC3] ++ (splitW16 w16)
+genJmp (JmpCond cond w16) = B.pack $ [ins] ++ (splitW16 w16)
+ where ins = case cond of
+        NotZero -> 0xC2
+        Zero -> 0xCA
+        NoCarry -> 0xD2
+        Carry -> 0xDA
+genJmp JmpHL = B.singleton 0xE9
+genJmp (JmpRel w8) = B.pack [0x18, w8]
+genJmp (JmpRelCond cond w8) = B.pack [ins, w8]
+ where ins = case cond of
+        NotZero -> 0x20
+        Zero -> 0x28
+        NoCarry -> 0x30
+        Carry -> 0x38         
 
 
