@@ -46,6 +46,7 @@ data Ld8Stmt = LdRegReg Register Register -- Load register contents into registe
             | LdAMemCombinedReg CombinedRegister --Load value at address Combined reg into A
             | LdMemCombinedRegA CombinedRegister --Load contents of register A into mem address of reg
             | LdAMemIm Word16 --Load value at immediate 16 bit address into register A
+            | LdMemImA Word16 -- Load value in register A into memory at immediate 16 bit address
             | LdiAmemHL
             | LdimemHLA
             | LddAmemHL

@@ -8,10 +8,15 @@ import qualified Data.ByteString as B
 import Data.List
 import qualified Data.Map as M
 import Data.Word
+import Data.Bits
 
+splitW16 :: Word16 -> [Word8]
+splitW16 w16 = [fromIntegral (w16 .&. 0xFF),  fromIntegral (w16 `shiftR` 8)]
 
 regs = [B, C, D, E, H, L, A]
-regOffsets = [0, 1, 2, 3, 4, 5, 7]
+regOffsets :: [Word8]
+regOffsets = [0, 1, 2, 3, 4, 5, 7] 
+regOffsetMap = M.fromList $ zip regs regOffsets
 
 getRegAluOps :: Word8 -> Alu8Op -> [((Alu8Op, Register), Word8)]
 getRegAluOps n op = zip (zip (repeat op) regs) (map (+ n) regOffsets)
@@ -48,6 +53,11 @@ aluHLTable = M.fromList $
     zip [Add, Adc, Sub, Sbc, And, Xor, Or, Cmp, Inc, Dec]
         [0x86, 0x8E, 0x96, 0x9E, 0xA6, 0xAE, 0xB6, 0xBE, 0x34, 0x35]
 
+-- Gives  offset of first register in load instruction
+reg1MapLd :: M.Map Register Word8
+reg1MapLd = M.fromList [(B,0), (C, 8), (D, 16), (E, 24), (H, 32), (L, 40), (A, 52)]
+
+
 -- |Generate Gameboy Binary code from Assembly
 --genCode :: Program -> B.ByteString
 --genCode (Program xs) = concatMap genStmt xs
@@ -56,6 +66,7 @@ aluHLTable = M.fromList $
 genStmt :: Stmt -> B.ByteString
 genStmt (Alu8 a) = genAlu8 a
 genStmt (Alu16 a) = genAlu16 a
+genStmt (Ld8 a) = genLd8 a 
 
 genAlu8 :: Alu8Stmt -> B.ByteString
 genAlu8 (AluReg op reg) = B.singleton $ M.findWithDefault 0xD3 (op, reg) aluRegTable
@@ -79,5 +90,53 @@ genAlu16 (AddHL reg) = B.singleton $ case reg of
     DE -> 0x19
     HL -> 0x29
     SP -> 0x39
+
+
+genLd8 :: Ld8Stmt -> B.ByteString
+genLd8 (LdRegReg reg1 reg2) = B.singleton $ 0x40 + 
+    (M.findWithDefault 0x0 reg1 reg1MapLd) + (M.findWithDefault 0x0 reg2 regOffsetMap)
+genLd8 (LdRegIm reg word) = B.pack [0x1, word] 
+ where ins = case reg of 
+        B -> 0x06
+        C -> 0x0E
+        D -> 0x16
+        E -> 0x1E
+        H -> 0x26
+        L -> 0x2E
+        A -> 0x3E
+genLd8 (LdRegMemHl reg) = B.singleton $ case reg of
+    B -> 0x46
+    C -> 0x4E
+    D -> 0x56
+    E -> 0x5E
+    H -> 0x66
+    L -> 0x6E
+    A -> 0x7E
+genLd8 (LdMemHlReg reg) = B.singleton $ case reg of
+    B -> 70
+    C -> 71
+    D -> 72
+    E -> 73
+    H -> 74
+    L -> 75
+    A -> 77
+genLd8 (LdAMemCombinedReg reg) = B.singleton $ case reg of
+    BC -> 0x0A
+    DE -> 0x1A
+    otherwise -> error $ "Cannot load memory at  register " ++ (show reg) ++ "into register A"
+genLd8 (LdMemCombinedRegA reg) = B.singleton $ case reg of
+    BC -> 0x3
+    DE -> 0x13
+    otherwise -> error $ "Cannot load content of register A into memory at register " ++ (show reg) 
+genLd8 (LdAMemIm w16) = B.pack $ [0xFA] ++ (splitW16 w16)
+genLd8 (LdMemImA w16) = B.pack $ [0xEA] ++ (splitW16 w16)
+genLd8 LdiAmemHL = B.singleton 0x2A
+genLd8 LdimemHLA = B.singleton 0x22
+genLd8 LddAmemHL = B.singleton 0x3A
+genLd8 LddmemHLA = B.singleton 0x33
+genLd8 LDIOAC = B.singleton 0xF2 
+genLd8 LDIOCA = B.singleton 0xE2
+genLd8 (LdhIOA w8) = B.pack [0xE0, w8]
+genLd8 (LdhAIO w8) = B.pack [0xF0, w8]
 
 
