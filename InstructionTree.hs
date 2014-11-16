@@ -24,18 +24,18 @@ data Stmt = Alu8 Alu8Stmt
           | Ld16 Ld16Stmt 
           | Jmp JmpStmt
           | Miscellaneous MiscellaneousStmt
-            deriving (Show)
+            deriving (Show, Eq, Ord)
 
 data Alu8Stmt = AluReg Alu8Op Register 
               | AluImm Alu8Op Integer
               | AluMemHl Alu8Op 
-               deriving (Show)
+               deriving (Show,Eq, Ord)
 
 data Alu16Stmt = Inc16 CombinedRegister
                | Dec16 CombinedRegister
                | AddSpIm Integer
                | AddHL CombinedRegister
-               deriving (Show)
+               deriving (Show,Eq, Ord)
 
 data Ld8Stmt = LdRegReg Register Register -- Load register contents into register
             | LdRegIm  Register Integer -- Load immediate 8 bit unsigned val into Reg
@@ -52,7 +52,7 @@ data Ld8Stmt = LdRegReg Register Register -- Load register contents into registe
             | LDIOCA    
             | LdhIOA Integer
             | LdhAIO Integer 
-              deriving (Show)
+              deriving (Show,Eq, Ord)
 
 data Ld16Stmt = LdCombinedRegIm CombinedRegister Integer
               |  LdMemSp Integer -- Load SP contents into given 16 bit address 
@@ -60,14 +60,14 @@ data Ld16Stmt = LdCombinedRegIm CombinedRegister Integer
               |  LdHLSpPlusIm Integer -- Load contents of memory 
               |  Push StackRegister -- Push contents of combined reg onto stack
               |  Pop StackRegister -- Pop contents of combined reg from stack
-                 deriving (Show)
+                 deriving (Show, Eq, Ord)
 
 data JmpStmt = JmpIm Integer -- Jump to 16 bit immediate address
              | JmpCond Condition Integer -- Jump if Condition is met
              | JmpHL -- Jump to address contained in register HL
              | JmpRel Integer -- Jump to 8 bit address relative to PC
              | JmpRelCond Condition Integer -- Relative Jump if Condition is met
-               deriving (Show) 
+               deriving (Show, Eq, Ord) 
 
 data MiscellaneousStmt = 
     SwapReg Register
@@ -81,7 +81,7 @@ data MiscellaneousStmt =
   | STOP
   | DI
   | EI
-    deriving (Show)
+    deriving (Show, Eq, Ord)
 
 data RotateStmt = RLCA
                 | RLA
@@ -101,15 +101,15 @@ data RotateStmt = RLCA
                 | SRAMemHL 
                 | SRLReg Register
                 | SRLMemHL
+                deriving (Show, Eq, Ord)
 
+data Condition = NotZero | Zero | NoCarry | Carry deriving (Show,Eq, Ord)
 
-data Condition = NotZero | Zero | NoCarry | Carry deriving (Show)
+data Register = A | B | C | D | E | H | L  deriving (Show,Eq, Ord)
 
-data Register = A | B | C | D | E | H | L  deriving (Show)
+data CombinedRegister = BC | DE | HL | SP  deriving (Show,Eq, Ord) 
 
-data CombinedRegister = BC | DE | HL | SP  deriving (Show) 
+data StackRegister = StackRegAF | StackRegBC | StackRegDE | StackRegHL deriving (Show,Eq, Ord)
 
-data StackRegister = StackRegAF | StackRegBC | StackRegDE | StackRegHL deriving (Show)
-
-data Alu8Op = Add | Adc | Sub | Sbc | And | Or | Xor | Cmp | Inc | Dec deriving (Show)
+data Alu8Op = Add | Adc | Sub | Sbc | And | Or | Xor | Cmp | Inc | Dec deriving (Show,Eq, Ord)
 
